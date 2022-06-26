@@ -1,0 +1,408 @@
+<!--
+	THIS EXAMPLE WAS DOWNLOADED FROM https://echarts.apache.org/examples/en/editor.html?c=scatter-single-axis
+-->
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+
+<head>
+  <meta charset="utf-8">
+</head>
+
+<body style="height: 100%; margin: 0">
+  <h1>XPRV</h1>
+  <h2>Vega Validators and Delegators</h2>
+  <div id="container_bubbles" style="height: 100%"></div>
+  <div id="container_graph" style="height: 100%"></div>
+
+  <script type="text/javascript" src='https://cdn.jsdelivr.net/npm/bignumber.js@9.0.2/bignumber.min.js'></script>
+  <script type="text/javascript" src="https://fastly.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.min.js"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  
+  <script type="text/javascript">
+    // get data
+    axios.get('https://vega.xprv.io/datanode/epochs')
+      .then(res => {
+        // console.log('good', '10582010000000000000000', 10582010000000000000000, res)
+        var delegations = res.data.epoch.delegations.length
+        var seq = res.data.epoch.seq
+
+        var data = res.data.epoch.validators
+          .map((v, index) => ({
+            index,
+            stakedByDelegates: new BigNumber(v.stakedByDelegates).shiftedBy(-18),
+            delegators: v.delegations.length,
+            stakeScore: new BigNumber(v.rankingScore.stakeScore),
+            name: v.name,
+            performanceScore: new BigNumber(v.rankingScore.performanceScore),
+            label: ""
+            // location: v.location,
+            // nodeId: v.id
+          }))
+          .map(v => {
+            v.label =
+              v.performanceScore.gt(0.9999999) ? 0 :
+                v.performanceScore.gt(0.9999) ? 1 :
+                  v.performanceScore.gt(0.999) ? 2 :
+                    3
+            return v
+          })
+          .reduce((acc, curr) => {
+            var index = acc[curr.label].length
+            acc[curr.label].push([curr.stakedByDelegates.toNumber(), curr.delegators, curr.stakeScore.shiftedBy(10).toNumber(), curr.name + "\nShare " + curr.stakeScore.shiftedBy(2).toFixed(2) + "%\nPerf. " + curr.performanceScore.shiftedBy(2).toFixed(3) + "%", curr.label])
+            return acc
+          }, [[], [], [], []])
+        // .sort((a, b) => a.stakeScore.compareTo(b.stakeScore))
+        bubble_chart(data)
+
+
+
+        var delegators = res.data.epoch.delegations
+          .reduce((acc, curr) => {
+            if (!acc[curr.party]) {
+              acc[curr.party] = {
+                name: curr.party.substring(0, 5),
+                amount: new BigNumber(0)
+              }
+            }
+            acc[curr.party].amount = acc[curr.party].amount.plus(new BigNumber(curr.amount))
+            acc[curr.party].symbolSize = acc[curr.party].amount.shiftedBy(-22).toFixed(0)
+            acc[curr.party].category = acc[curr.party].amount.gt(300000000000000000000000) ? 2 : 1 // whale
+            return acc
+          }, {})
+
+        var lookup = res.data.epoch.validators
+          .reduce((acc, curr) => {
+            if (!acc[curr.id]) {
+              acc[curr.id] = {
+                name: curr.name,
+                amount: new BigNumber()
+              }
+            }
+            acc[curr.id].amount = acc[curr.id].amount.plus(new BigNumber(curr.amount))
+            acc[curr.id].symbolSize = new BigNumber(curr.stakedTotal).shiftedBy(-23).toFixed(0)
+            acc[curr.id].category = 0
+            return acc
+          }, delegators)
+
+        var nodes = Object.keys(lookup).map((k, index) => {
+          lookup[k].index = index
+          return lookup[k]
+        })
+
+        var links = res.data.epoch.delegations
+          .map(d => ({
+            source: lookup[d.party].index,
+            target: lookup[d.nodeId].index,
+          }))
+
+        var graph = {
+          nodes,
+          links,
+          categories: [
+            {
+              name: "Validators",
+              itemStyle: {
+                color: 'rgb(255,7,127)'
+              }
+            },
+            {
+              name: "Delegators",
+              itemStyle: {
+                color: 'rgb(223,255,11)'
+              }
+            },
+            {
+              name: "Whales",
+              itemStyle: {
+                color: 'rgb(0,246,127)'
+              }
+            },
+          ]
+        }
+
+        console.log('graph', graph)
+
+        make_graph_chart(graph);
+
+
+      })
+      .catch(err => {
+        console.log('error', err)
+      });
+
+
+    // continue with chart
+    function bubble_chart(data) {
+      var dom = document.getElementById('container_bubbles');
+      var myChart = echarts.init(dom, null, {
+        renderer: 'canvas',
+        useDirtyRect: false
+      });
+      var app = {};
+      var option = {
+        backgroundColor: new echarts.graphic.RadialGradient(0.3, 0.3, 0.8, [
+          {
+            offset: 0,
+            color: '#ffffff'
+          },
+          {
+            offset: 1,
+            color: '#ffffff'
+          }
+        ]),
+        title: {
+          text: 'Performance and Delegators by Validator',
+          left: '5%',
+          top: '1%'
+        },
+        legend: {
+          right: '10%',
+          top: '3%',
+          data: ["Perfect", "Good", "OK", "Other"]
+        },
+        grid: {
+          left: '8%',
+          top: '10%'
+        },
+        xAxis: {
+          splitLine: {
+            lineStyle: {
+              type: 'dashed'
+            }
+          },
+          name: "Staked"
+        },
+        yAxis: {
+          splitLine: {
+            lineStyle: {
+              type: 'dashed'
+            }
+          },
+          name: "Delegators",
+          scale: true
+        },
+        series: [
+          {
+            name: 'Other',
+            data: data[3],
+            type: 'scatter',
+            symbolSize: function (data) {
+              return Math.sqrt(data[2]) / 5e2;
+            },
+            emphasis: {
+              focus: 'series',
+              label: {
+                show: true,
+                formatter: function (param) {
+                  return param.data[3];
+                },
+                position: 'top'
+              }
+            },
+            itemStyle: {
+              shadowBlur: 10,
+              shadowColor: 'rgba(0, 0, 0, 0.5)',
+              shadowOffsetY: 5,
+              color: new echarts.graphic.RadialGradient(0.4, 0.3, 1, [
+                {
+                  offset: 0,
+                  color: 'rgb(0, 0, 0)'
+                },
+                {
+                  offset: 1,
+                  color: 'rgb(255,255,255)'
+
+                }
+              ])
+            }
+          },
+          {
+            name: 'OK',
+            data: data[2],
+            type: 'scatter',
+            symbolSize: function (data) {
+              return Math.sqrt(data[2]) / 5e2;
+            },
+            emphasis: {
+              focus: 'series',
+              label: {
+                show: true,
+                formatter: function (param) {
+                  return param.data[3];
+                },
+                position: 'top'
+              }
+            },
+            itemStyle: {
+              shadowBlur: 10,
+              shadowColor: 'rgba(255,7,127, 0.5)',
+              shadowOffsetY: 5,
+              color: new echarts.graphic.RadialGradient(0.4, 0.3, 1, [
+                {
+                  offset: 0,
+                  color: 'rgb(255,7,127)'
+                },
+                {
+                  offset: 1,
+                  color: 'rgb(255,255,255)'
+                }
+              ])
+            }
+          },
+          {
+            name: 'Good',
+            data: data[1],
+            type: 'scatter',
+            symbolSize: function (data) {
+              return Math.sqrt(data[2]) / 5e2;
+            },
+            emphasis: {
+              focus: 'series',
+              label: {
+                show: true,
+                formatter: function (param) {
+                  return param.data[3];
+                },
+                position: 'top'
+              }
+            },
+            itemStyle: {
+              shadowBlur: 10,
+              shadowColor: 'rgba(223,255,11, 0.5)',
+              shadowOffsetY: 5,
+              color: new echarts.graphic.RadialGradient(0.4, 0.3, 1, [
+                {
+                  offset: 0,
+                  color: 'rgb(223,255,11)'
+                },
+                {
+                  offset: 1,
+                  color: 'rgb(223,255,11)'
+                }
+              ])
+            }
+          },
+          {
+            name: 'Perfect',
+            data: data[0],
+            type: 'scatter',
+            symbolSize: function (data) {
+              return Math.sqrt(data[2]) / 5e2;
+            },
+            emphasis: {
+              focus: 'series',
+              label: {
+                show: true,
+                formatter: function (param) {
+                  return param.data[3];
+                },
+                position: 'top'
+              }
+            },
+            itemStyle: {
+              shadowBlur: 10,
+              shadowColor: 'rgba(0,246,127, 0.5)',
+              shadowOffsetY: 5,
+              color: new echarts.graphic.RadialGradient(0.4, 0.3, 1, [
+                {
+                  offset: 0,
+                  color: 'rgb(0,246,127)'
+                },
+                {
+                  offset: 1,
+                  color: 'rgb(255,255,255)'
+                }
+              ])
+            }
+          }
+        ]
+      };
+
+      if (option && typeof option === 'object') {
+        myChart.setOption(option);
+      }
+
+      window.addEventListener('resize', myChart.resize);
+
+    }
+
+    function make_graph_chart(graph) {
+      var dom = document.getElementById('container_graph');
+      var myChart = echarts.init(dom, null, {
+        renderer: 'canvas',
+        useDirtyRect: false
+      });
+      var app = {};
+
+      myChart.showLoading();
+
+      myChart.hideLoading();
+      graph.nodes.forEach(function (node) {
+        node.label = {
+          show: node.symbolSize > 11
+        };
+      });
+      var option = {
+        title: {
+          text: 'Delegation Graph by Stake Total',
+          subtext: 'Know your whale',
+          top: 'bottom',
+          left: 'right'
+        },
+        tooltip: {},
+        legend: [
+          {
+            // selectedMode: 'single',
+            data: graph.categories.map(function (a) {
+              return a.name;
+            })
+          }
+        ],
+        animationDuration: 1500,
+        animationEasingUpdate: 'quinticInOut',
+        series: [
+          {
+            name: 'Node',
+            type: 'graph',
+            layout: 'force',
+            data: graph.nodes,
+            links: graph.links,
+            categories: graph.categories,
+            roam: true,
+            force: {
+              repulsion: 100,
+              gravity: 0.2,
+              edgeLength: 5,
+            },
+            draggable: true,
+            label: {
+              position: 'right',
+              formatter: '{b}'
+            },
+            lineStyle: {
+              color: 'source',
+              curveness: 0.3,
+              opacity: 0.7
+            },
+            emphasis: {
+              focus: 'adjacency',
+              lineStyle: {
+                width: 10
+              }
+            }
+          }
+        ]
+      };
+      myChart.setOption(option);
+
+      if (option && typeof option === 'object') {
+        myChart.setOption(option);
+      }
+
+      window.addEventListener('resize', myChart.resize);
+
+    }
+  </script>
+</body>
+
+</html>
