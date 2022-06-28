@@ -11,7 +11,18 @@
 <body style="height: 100%; margin: 0">
   <h1>XPRV</h1>
   <h2>Vega Validators and Delegators</h2>
+  <h3>What is the validators performance score in a given Epoch?</h3>
+  <math>
+    Performance<sub>ve</sub> = 
+    <box>Proposed Blocks<sub>ve</sub> 
+      <over> 
+        (Blocks<sub>e</sub> * Voting Power<sub>v</sub> / Voting Power<sub>e</sub>)</box>
+  </math>
+
   <div id="container_bubbles" style="height: 100%"></div>
+
+  <h3>Who has validated to who? And what is their stake size?</h3>
+
   <div id="container_graph" style="height: 100%"></div>
 
   <script type="text/javascript" src='https://cdn.jsdelivr.net/npm/bignumber.js@9.0.2/bignumber.min.js'></script>
@@ -65,7 +76,7 @@
               }
             }
             acc[curr.party].amount = acc[curr.party].amount.plus(new BigNumber(curr.amount))
-            acc[curr.party].symbolSize = acc[curr.party].amount.shiftedBy(-22).toFixed(0)
+            acc[curr.party].symbolSize = acc[curr.party].amount.shiftedBy(-23).toFixed(0)
             acc[curr.party].category = acc[curr.party].amount.gt(300000000000000000000000) ? 2 : 1 // whale
             return acc
           }, {})
@@ -339,7 +350,7 @@
       myChart.hideLoading();
       graph.nodes.forEach(function (node) {
         node.label = {
-          show: node.symbolSize > 11
+          show: node.symbolSize > 2
         };
       });
       var option = {
