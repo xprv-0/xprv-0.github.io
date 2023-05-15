@@ -31,7 +31,7 @@
   
   <script type="text/javascript">
     // get data
-    axios.get('https://vega.xprv.io/datanode/epochs')
+    axios.get('https://vega.xprv.io/datanode/api/v2/epoch')
       .then(res => {
         // console.log('good', '10582010000000000000000', 10582010000000000000000, res)
         var delegations = res.data.epoch.delegations.length
